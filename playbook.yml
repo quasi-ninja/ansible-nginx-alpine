@@ -1,0 +1,70 @@
+---
+- name: Install Required Packages
+  hosts: all
+  become: true
+
+  tasks:
+    # Install the Docker dependencies, this assumes you are provisioning an Ubuntu 14.04 instance.
+    - name: Install Python Dependencies
+      apt:
+        name: python-setuptools
+
+    - name: Install Python Dev 
+      apt:
+        name: python-dev
+
+    - name: Install Build Essentials 
+      apt:
+        name: build-essential
+
+    - name: Install pip
+      command: easy_install pip
+
+    - name: Install Docker pip packages
+      pip:
+        name: 'docker-py'
+
+    # Before we can use Docker Registry we need to install a repository key, if we don't then we get complaints about GPG keys.
+    - name: Configure Docker Registry Key
+      apt_key:
+        id: "58118E89F3A912897C070ADBF76221572C52609D"
+        keyserver: "hkp://p80.pool.sks-keyservers.net:80"
+        state: present
+
+    # With the key in place we can now add the Docker Registry
+    - name: Add Docker Registry to Host
+      apt_repository: 
+        repo: 'deb https://apt.dockerproject.org/repo ubuntu-trusty main' 
+        state: present
+
+    # Install and Start Docker
+    - name: Install and Start Docker
+      apt: 
+        name: 'docker-engine'
+        update_cache: yes
+
+    - service: 
+        name: docker
+        state: restarted
+
+    # With docker installed we need to prepare the ground for creating our docker container.
+    # We syncronize the contents of the nginx-files directory with the Ubuntu Container Host, storing them in /tmp
+    - name: Transfer Site Content
+      synchronize: src=nginx-files dest=/tmp/
+
+    # With our dependencies in place we are ready to create the container based on the Dockerfile contained in nginx-files 
+    - name: Build Docker Container
+      docker_image: >
+        name=nginx-on-alpine
+        tag=PST
+        path=/tmp/nginx-files
+        state=present
+    # Container created, now it is time to create an instance and serve the static pages.
+    - name: Instantiate Container
+      docker_container:
+        name: nginx-site
+        image: "nginx-on-alpine:PST"
+        state: started
+        restart: true
+        ports: 
+          "80:80"
